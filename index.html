@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem Pembayaran - Arduino UNO</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h2>💳 Sistem Pembayaran Arduino UNO</h2>
+
+    <label for="amount">Nominal Pembayaran (Rp)</label>
+    <input type="number" id="amount" placeholder="Masukkan nominal" required>
+
+    <label for="method">Metode Pembayaran</label>
+    <select id="method">
+      <option value="cash">Tunai</option>
+      <option value="debit">Debit</option>
+      <option value="qris">QRIS</option>
+    </select>
+
+    <button id="connectBtn">🔌 Hubungkan ke Arduino</button>
+    <button id="disconnectBtn" disabled>❌ Putuskan Koneksi</button>
+    <button id="payBtn" disabled>💰 Kirim Pembayaran</button>
+
+    <div id="log"></div>
+    <p class="small">Pastikan Arduino UNO terhubung via kabel USB</p>
+  </div>
+
+  <script>
+    let port;
+    let writer;
+    let reader;
+    let keepReading = true;
+
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const payBtn = document.getElementById('payBtn');
+    const logBox = document.getElementById('log');
+
+    // 🔌 Hubungkan ke Arduino
+    connectBtn.addEventListener('click', async () => {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+
+        writer = port.writable.getWriter();
+        reader = port.readable.getReader();
+        keepReading = true;
+        readSerial();
+
+        log("✅ Terhubung ke Arduino UNO!");
+        connectBtn.disabled = true;
+        disconnectBtn.disabled = false;
+        payBtn.disabled = false;
+      } catch (err) {
+        log("❌ Gagal terhubung: " + err);
+      }
+    });
+
+    // ❌ Putuskan koneksi
+    disconnectBtn.addEventListener('click', async () => {
+      keepReading = false;
+      if (reader) await reader.cancel();
+      if (writer) writer.releaseLock();
+      if (port) await port.close();
+
+      log("🔴 Koneksi diputus.");
+      connectBtn.disabled = false;
+      disconnectBtn.disabled = true;
+      payBtn.disabled = true;
+    });
+
+    // 💰 Kirim data pembayaran ke Arduino
+    payBtn.addEventListener('click', async () => {
+      const amount = document.getElementById('amount').value;
+      const method = document.getElementById('method').value;
+
+      if (!amount) {
+        log("⚠️ Nominal tidak boleh kosong!");
+        return;
+      }
+
+      const data = `PAY:${method}:${amount}\n`;
+      const encoder = new TextEncoder();
+      await writer.write(encoder.encode(data));
+      log(`📤 Data dikirim: ${data}`);
+    });
+
+    // 📡 Baca data dari Arduino
+    async function readSerial() {
+      const decoder = new TextDecoder();
+      while (port.readable && keepReading) {
+        try {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) log("📥 Dari Arduino: " + decoder.decode(value));
+        } catch (err) {
+          log("⚠️ Error membaca serial: " + err);
+          break;
+        }
+      }
+    }
+
+    function log(message) {
+      logBox.textContent += message + "\n";
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+  </script>
+</body>
+</html>
